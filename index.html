@@ -6,7 +6,7 @@
     <title>Pase de Lista CBT</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://unpkg.com/@zxing/browser@latest"></script>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
 
     <style>
         body { background-color: #f4f6f9; }
@@ -70,10 +70,11 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    // 🔴 REEMPLAZA EL TEXTO DE ABAJO CON TU URL DEL PASO 1 (MANTÉN LAS COMILLAS):
+    // 🔴 REEMPLAZA ESTA URL CON TU NUEVA URL GENERADA EN EL PASO 1
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
 
-    const codeReader = new ZXingBrowser.BrowserQRCodeReader();
+    // Activación del lector multiformato (QR + Códigos de barras de todo tipo)
+    const codeReader = new ZXing.BrowserMultiFormatReader();
     let codeReaderControls = null;
     const txtMatricula = document.getElementById("matricula");
     const divResultado = document.getElementById("resultado");
@@ -90,12 +91,16 @@
                 }
             };
 
-            codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
+            // Iniciar decodificación de video continua habilitando códigos de barras
+            codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result) {
                     txtMatricula.value = result.text;
                     divResultado.className = "alert alert-warning text-center fw-bold";
                     divResultado.innerHTML = "Código detectado: " + result.text + ". Procesando...";
-                    registrar(); // Envía automáticamente al detectar
+                    
+                    // Detener para procesar este alumno y evitar lecturas infinitas en ráfaga
+                    detenerCamara();
+                    registrar(); 
                 }
             });
 
@@ -106,19 +111,16 @@
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error al abrir la cámara. Asegúrate de dar permisos de cámara.";
+            divResultado.innerHTML = "❌ Error al abrir la cámara. Revisa los permisos.";
         }
     }
 
     function detenerCamara() {
-        if (codeReaderControls) {
-            codeReaderControls.stop();
-            codeReaderControls = null;
+        if (codeReader) {
+            codeReader.reset();
         }
         document.getElementById("btnCamara").disabled = false;
         document.getElementById("btnDetener").disabled = true;
-        divResultado.className = "alert alert-secondary text-center fw-bold";
-        divResultado.innerHTML = "Cámara detenida.";
     }
 
     function registrar() {
@@ -132,7 +134,6 @@
         divResultado.className = "alert alert-info text-center fw-bold";
         divResultado.innerHTML = "⏳ Conectando con la base de datos...";
 
-        // Parámetros de envío compatibles mediante POST directo
         var datos = new URLSearchParams();
         datos.append('matricula', valorMatricula);
 
@@ -153,10 +154,14 @@
                 divResultado.classList.add("alert-danger");
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
+
+            // Volver a encender la cámara automáticamente tras 3.5 segundos para el siguiente alumno
+            setTimeout(iniciarCamara, 3500);
         })
         .catch(err => {
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error de comunicación con la base de datos.";
+            divResultado.innerHTML = "❌ Error de conexión con la base de datos.";
+            setTimeout(iniciarCamara, 3500);
         });
     }
 </script>
