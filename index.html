@@ -72,34 +72,38 @@
 <script>
     // 🔴 REEMPLAZA ESTA URL CON TU NUEVA URL GENERADA EN EL PASO 1
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
-
-    // Activación del lector multiformato (QR + Códigos de barras de todo tipo)
+// Configuramos el lector multiformato para habilitar códigos de barras lineales y QR
     const codeReader = new ZXing.BrowserMultiFormatReader();
     let codeReaderControls = null;
     const txtMatricula = document.getElementById("matricula");
     const divResultado = document.getElementById("resultado");
+    let procesandoCodigo = false;
 
     async function iniciarCamara() {
         divResultado.className = "alert alert-info text-center fw-bold";
         divResultado.innerHTML = "Iniciando cámara trasera...";
+        procesandoCodigo = false;
         
         try {
             const constraints = {
                 video: {
                     facingMode: "environment",
-                    advanced: [{ focusMode: "continuous" }]
+                    advanced: [{ focusMode: "continuous" }] // Fuerza el enfoque continuo en celulares
                 }
             };
 
-            // Iniciar decodificación de video continua habilitando códigos de barras
-            codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
-                if (result) {
-                    txtMatricula.value = result.text;
-                    divResultado.className = "alert alert-warning text-center fw-bold";
-                    divResultado.innerHTML = "Código detectado: " + result.text + ". Procesando...";
+            // Comenzamos la decodificación continua de video en tiempo real
+            codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
+                if (result && !procesandoCodigo) {
+                    procesandoCodigo = true; // Bloquea lecturas repetidas en ráfaga
                     
-                    // Detener para procesar este alumno y evitar lecturas infinitas en ráfaga
-                    detenerCamara();
+                    const codigoDetectado = result.text.trim();
+                    txtMatricula.value = codigoDetectado;
+                    
+                    divResultado.className = "alert alert-warning text-center fw-bold";
+                    divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
+                    
+                    detenerCamara(); // Pausa el flujo de video mientras procesa en Sheets
                     registrar(); 
                 }
             });
@@ -107,17 +111,18 @@
             document.getElementById("btnCamara").disabled = true;
             document.getElementById("btnDetener").disabled = false;
             divResultado.className = "alert alert-success text-center fw-bold";
-            divResultado.innerHTML = "Listo. Apunte al código de barras.";
+            divResultado.innerHTML = "Lector activo. Apunte fijamente al código de barras.";
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error al abrir la cámara. Revisa los permisos.";
+            divResultado.innerHTML = "❌ Error al abrir la cámara. Verifica los permisos.";
         }
     }
 
     function detenerCamara() {
-        if (codeReader) {
-            codeReader.reset();
+        if (codeReaderControls) {
+            codeReader.reset(); // Resetea el hardware del lector por completo
+            codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
         document.getElementById("btnDetener").disabled = true;
@@ -128,6 +133,7 @@
         if (!valorMatricula) {
             divResultado.className = "alert alert-danger text-center fw-bold";
             divResultado.innerHTML = "⚠️ Por favor, ingrese o escanee una matrícula.";
+            procesandoCodigo = false;
             return;
         }
 
@@ -139,6 +145,7 @@
 
         fetch(URL_APPS_SCRIPT, {
             method: "POST",
+            mode: "cors",
             body: datos
         })
         .then(response => response.json())
@@ -147,7 +154,7 @@
             
             if (res.status === "success") {
                 divResultado.classList.add("alert-success");
-                txtMatricula.value = ""; // Limpiar casilla
+                txtMatricula.value = ""; // Limpia la casilla para el siguiente alumno
             } else if (res.status === "duplicado") {
                 divResultado.classList.add("alert-duplicado");
             } else {
@@ -155,15 +162,18 @@
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Volver a encender la cámara automáticamente tras 3.5 segundos para el siguiente alumno
-            setTimeout(iniciarCamara, 3500);
+            // Espera 3 segundos mostrando el resultado y luego vuelve a encender la cámara automáticamente
+            setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error de conexión con la base de datos.";
-            setTimeout(iniciarCamara, 3500);
+            divResultado.innerHTML = "❌ Error de conexión al guardar en Sheets.";
+            setTimeout(iniciarCamara, 3000);
         });
     }
+
+
+    
 </script>
 </body>
 </html>
