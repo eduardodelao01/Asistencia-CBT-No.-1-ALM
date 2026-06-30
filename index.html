@@ -73,7 +73,24 @@
     // 🔴 REEMPLAZA ESTA URL CON TU NUEVA URL GENERADA EN EL PASO 1
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
 // Configuramos el lector multiformato para habilitar códigos de barras lineales y QR
-    const codeReader = new ZXing.BrowserMultiFormatReader();
+
+
+    // --- CONFIGURACIÓN DE LA PRUEBA ORIGINAL (FORZAR CÓDIGOS DE BARRAS) ---
+    const hints = new Map();
+    const formats = [
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+        ZXing.BarcodeFormat.ITF
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Fuerza al procesador a enfocar líneas difíciles
+
+    // Creamos el lector aplicando los mapas de formatos de barras nativos
+    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
     let codeReaderControls = null;
     const txtMatricula = document.getElementById("matricula");
     const divResultado = document.getElementById("resultado");
@@ -88,14 +105,17 @@
             const constraints = {
                 video: {
                     facingMode: "environment",
-                    advanced: [{ focusMode: "continuous" }] // Fuerza el enfoque continuo en celulares
+                    advanced: [
+                        { focusMode: "continuous" }, // Enfoque constante
+                        { zoom: 1.0 }               // Zoom base estable
+                    ]
                 }
             };
 
-            // Comenzamos la decodificación continua de video en tiempo real
+            // Iniciar el escaneo continuo con la configuración pesada de barras
             codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result && !procesandoCodigo) {
-                    procesandoCodigo = true; // Bloquea lecturas repetidas en ráfaga
+                    procesandoCodigo = true; // Evita lecturas múltiples instantáneas
                     
                     const codigoDetectado = result.text.trim();
                     txtMatricula.value = codigoDetectado;
@@ -103,7 +123,7 @@
                     divResultado.className = "alert alert-warning text-center fw-bold";
                     divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
                     
-                    detenerCamara(); // Pausa el flujo de video mientras procesa en Sheets
+                    detenerCamara(); // Pausamos video mientras Google guarda el registro
                     registrar(); 
                 }
             });
@@ -111,17 +131,17 @@
             document.getElementById("btnCamara").disabled = true;
             document.getElementById("btnDetener").disabled = false;
             divResultado.className = "alert alert-success text-center fw-bold";
-            divResultado.innerHTML = "Lector activo. Apunte fijamente al código de barras.";
+            divResultado.innerHTML = "Lector de Credenciales Activo. Apunte al código de barras.";
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error al abrir la cámara. Verifica los permisos.";
+            divResultado.innerHTML = "❌ Error al abrir la cámara. Revisa los permisos.";
         }
     }
 
     function detenerCamara() {
         if (codeReaderControls) {
-            codeReader.reset(); // Resetea el hardware del lector por completo
+            codeReader.reset(); // Resetea el hardware de captura por completo
             codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
@@ -138,7 +158,7 @@
         }
 
         divResultado.className = "alert alert-info text-center fw-bold";
-        divResultado.innerHTML = "⏳ Conectando con la base de datos...";
+        divResultado.innerHTML = "⏳ Guardando asistencia...";
 
         var datos = new URLSearchParams();
         datos.append('matricula', valorMatricula);
@@ -154,7 +174,7 @@
             
             if (res.status === "success") {
                 divResultado.classList.add("alert-success");
-                txtMatricula.value = ""; // Limpia la casilla para el siguiente alumno
+                txtMatricula.value = ""; // Limpiar casilla para el siguiente alumno
             } else if (res.status === "duplicado") {
                 divResultado.classList.add("alert-duplicado");
             } else {
@@ -162,12 +182,12 @@
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Espera 3 segundos mostrando el resultado y luego vuelve a encender la cámara automáticamente
+            // Espera 3 segundos mostrando el resultado en pantalla y reactiva el escáner
             setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error de conexión al guardar en Sheets.";
+            divResultado.innerHTML = "❌ Error de conexión al guardar en la base de datos.";
             setTimeout(iniciarCamara, 3000);
         });
     }
