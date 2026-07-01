@@ -22,7 +22,7 @@
         .alert { font-size: 18px; padding: 15px; border-radius: 10px; }
         .alert-duplicado { background-color: #fff3cd; color: #664d03; border-color: #ffecb5; }
         
-        /* Línea roja de guía para ayudar al usuario a centrar el código de barras */
+        /* Línea roja de guía láser para centrar el código de barras */
         .linea-guia {
             position: absolute;
             top: 50%;
@@ -30,7 +30,7 @@
             width: 90%;
             height: 2px;
             background-color: red;
-            box-shadow: 0 0 6px red;
+            box-shadow: 0 0 8px red;
             z-index: 10;
             transform: translateY(-50%);
         }
@@ -72,7 +72,7 @@
             </div>
 
             <div class="d-grid mb-4">
-                <button class="btn btn-success btn-lg" onclick="registrar()">
+                <button class="btn btn-success btn-lg fw-bold" onclick="registrar()">
                     ✔ Registrar Asistencia
                 </button>
             </div>
@@ -85,22 +85,11 @@
 </div>
 
 <script>
-    // 🔴 PEGA AQUÍ TU URL DE GOOGLE APPS SCRIPT QUE YA FUNCIONA EN LA BASE DE DATOS:
+    // 🔴 REEMPLAZA EL TEXTO ENTRE LAS COMILLAS CON TU URL DE GOOGLE APPS SCRIPT:
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
 
-    // --- CONFIGURACIÓN PARA FORZAR CÓDIGOS DE BARRAS ---
-    const hints = new Map();
-    const formats = [
-        ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.UPC_A
-    ];
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Obliga a procesar de forma estricta imágenes difíciles
-
-    // Creamos el lector inyectando la configuración de códigos de barras
-    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    // Inicialización del lector multimodo estándar
+    const codeReader = new ZXing.BrowserMultiFormatReader();
     let codeReaderControls = null;
     const txtMatricula = document.getElementById("matricula");
     const divResultado = document.getElementById("resultado");
@@ -111,20 +100,19 @@
         divResultado.innerHTML = "Iniciando lector de barras...";
         procesandoCodigo = false;
         
-        // Añadimos parámetros avanzados para forzar autofoco y optimizar resolución en el celular
+        // Configuración nativa limpia para asegurar la apertura de la cámara trasera sin restricciones
         const constraints = {
             video: {
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                advanced: [{ focusMode: "continuous" }] // Fuerza enfoque continuo
+                facingMode: "environment"
             }
         };
 
         try {
+            // Iniciamos la cámara en el elemento video
             codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result && !procesandoCodigo) {
-                    procesandoCodigo = true; // Bloquea lecturas en ráfaga
+                    // Forzamos la lectura de cualquier formato lineal (Code 128, Code 39, EAN, QR)
+                    procesandoCodigo = true; 
                     
                     const codigoDetectado = result.text.trim();
                     txtMatricula.value = codigoDetectado;
@@ -132,7 +120,7 @@
                     divResultado.className = "alert alert-warning text-center fw-bold";
                     divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
                     
-                    detenerCamara(); // Apaga la cámara temporalmente para registrar
+                    detenerCamara(); // Apaga la cámara de inmediato para evitar duplicados
                     registrar();
                 }
             });
@@ -140,17 +128,17 @@
             document.getElementById("btnCamara").disabled = true;
             document.getElementById("btnDetener").disabled = false;
             divResultado.className = "alert alert-success text-center fw-bold";
-            divResultado.innerHTML = "Lector de Barras Activo. Centre el código en la línea roja.";
+            divResultado.innerHTML = "Lector de Barras Activo. Coloque el código sobre la línea roja.";
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error: Permiso de cámara denegado.";
+            divResultado.innerHTML = "❌ Error: Permiso de cámara denegado o hardware ocupado.";
         }
     }
 
     function detenerCamara() {
         if (codeReaderControls) {
-            codeReader.reset(); // Resetea por completo el hardware de la cámara
+            codeReader.reset(); // Libera por completo el hardware de la cámara del teléfono
             codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
@@ -191,7 +179,7 @@
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Esperar 3 segundos mostrando el resultado y reactivar la cámara de forma automática
+            // Esperar 3 segundos para que veas el nombre del alumno y reactiva el escáner automáticamente
             setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
