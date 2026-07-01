@@ -5,20 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pase de Lista CBT</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    
     <script src="https://unpkg.com/@zxing/library@latest"></script>
 
     <style>
-        body { background-color: #f4f6f9; }
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; max-width: 600px; margin: 0 auto; }
         .card-header {
             border-top-left-radius: 15px !important;
             border-top-right-radius: 15px !important;
-            background-color: #0d6efd !important;
+            background-color: #0056b3 !important; /* Azul Institucional */
         }
-        video { width: 100%; height: auto; border: 4px solid #0d6efd; border-radius: 15px; background-color: black; }
+        /* Contenedor de la cámara para centrarla y darle forma */
+        #contenedor-camara { width: 100%; max-width: 450px; margin: 0 auto; background-color: black; border: 4px solid #0056b3; border-radius: 15px; overflow: hidden; position: relative; }
+        video { width: 100%; height: auto; display: block; object-fit: cover; }
         .form-control-lg { text-align: center; font-weight: bold; font-size: 24px; color: #444; }
-        .alert { font-size: 18px; padding: 15px; }
+        .alert { font-size: 18px; padding: 15px; border-radius: 10px; }
         .alert-duplicado { background-color: #fff3cd; color: #664d03; border-color: #ffecb5; }
     </style>
 </head>
@@ -26,122 +28,118 @@
 
 <div class="container py-4">
     <div class="card shadow">
-        <div class="card-header text-white text-center">
-            <h2>CBT No.1 "Lic. Adolfo López Mateos"</h2>
-            <h5>Sistema de Pase de Lista</h5>
+        <div class="card-header text-white text-center py-3">
+            <h2 class="mb-1 fw-bold">CBT No.1 "Lic. Adolfo López Mateos"</h2>
+            <h5 class="mb-0 text-white-50">Sistema de Pase de Lista</h5>
         </div>
         
         <div class="card-body">
-            <div class="row mb-4">
+            <div class="row mb-4 g-2">
                 <div class="col-6">
-                    <button id="btnCamara" class="btn btn-primary w-100" onclick="iniciarCamara()">
+                    <button id="btnCamara" class="btn btn-primary btn-lg w-100 fw-bold" onclick="iniciarCamara()">
                         📷 Iniciar Cámara
                     </button>
                 </div>
                 <div class="col-6">
-                    <button id="btnDetener" class="btn btn-danger w-100" onclick="detenerCamara()" disabled>
-                        ⛔ Detener Cámara
+                    <button id="btnDetener" class="btn btn-danger btn-lg w-100 fw-bold" onclick="detenerCamara()" disabled>
+                        ⛔ Detener
                     </button>
                 </div>
             </div>
 
             <div class="text-center mb-4">
-                <video id="reader" autoplay muted playsinline></video>
+                <div id="contenedor-camara">
+                    <video id="reader" autoplay muted playsinline></video>
+                </div>
             </div>
 
             <div class="mb-3 text-start">
-                <label class="form-label fw-bold text-secondary">Matrícula</label>
+                <label class="form-label fw-bold text-secondary mb-1">Matrícula</label>
                 <input id="matricula" type="text" class="form-control form-control-lg" placeholder="Escanee o escriba la matrícula" autocomplete="off">
             </div>
 
             <div class="d-grid mb-4">
-                <button class="btn btn-success btn-lg" onclick="registrar()">
+                <button class="btn btn-success btn-lg fw-bold py-2" onclick="registrar()">
                     ✔ Registrar Asistencia
                 </button>
             </div>
 
-            <div id="resultado" class="alert alert-secondary text-center fw-bold">
+            <div id="resultado" class="alert alert-secondary text-center fw-bold mb-0">
                 Esperando lectura...
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
-    // 🔴 REEMPLAZA ESTA URL CON TU NUEVA URL GENERADA EN EL PASO 1
+    // 🔴 REEMPLAZA EL TEXTO ENTRE LAS COMILLAS CON TU URL DE GOOGLE APPS SCRIPT:
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
-// Configuramos el lector multiformato para habilitar códigos de barras lineales y QR
 
+    // Inicialización estándar del lector multiformato
+    const codeReader = new ZXing.BrowserMultiFormatReader();
+    let codeReaderControls = null;
+    const txtMatricula = document.getElementById("matricula");
+    const divResultado = document.getElementById("resultado");
+    let procesandoCodigo = false;
 
-    // --- CONFIGURACIÓN DE LA PRUEBA ORIGINAL (FORZAR CÓDIGOS DE BARRAS) ---
-    const hints = new Map();
-    const formats = [
+    // Lista estricta de formatos de códigos de barras lineales de credenciales escolares
+    const formatosBarras = [
         ZXing.BarcodeFormat.CODE_128,
         ZXing.BarcodeFormat.CODE_39,
         ZXing.BarcodeFormat.EAN_13,
         ZXing.BarcodeFormat.EAN_8,
         ZXing.BarcodeFormat.UPC_A,
-        ZXing.BarcodeFormat.UPC_E,
         ZXing.BarcodeFormat.ITF
     ];
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Fuerza al procesador a enfocar líneas difíciles
-
-    // Creamos el lector aplicando los mapas de formatos de barras nativos
-    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
-    let codeReaderControls = null;
-    const txtMatricula = document.getElementById("matricula");
-    const divResultado = document.getElementById("resultado");
-    let procesandoCodigo = false;
 
     async function iniciarCamara() {
         divResultado.className = "alert alert-info text-center fw-bold";
         divResultado.innerHTML = "Iniciando cámara trasera...";
         procesandoCodigo = false;
         
-        try {
-            const constraints = {
-                video: {
-                    facingMode: "environment",
-                    advanced: [
-                        { focusMode: "continuous" }, // Enfoque constante
-                        { zoom: 1.0 }               // Zoom base estable
-                    ]
-                }
-            };
+        // Configuración simplificada recomendada para máxima compatibilidad móvil (evita pantallas negras)
+        const constraints = {
+            video: {
+                facingMode: "environment" 
+            }
+        };
 
-            // Iniciar el escaneo continuo con la configuración pesada de barras
+        try {
+            // Vinculamos la transmisión directamente al elemento <video> con ID 'reader'
             codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result && !procesandoCodigo) {
-                    procesandoCodigo = true; // Evita lecturas múltiples instantáneas
+                    const formatoDetectado = result.barcodeFormat;
                     
-                    const codigoDetectado = result.text.trim();
-                    txtMatricula.value = codigoDetectado;
-                    
-                    divResultado.className = "alert alert-warning text-center fw-bold";
-                    divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
-                    
-                    detenerCamara(); // Pausamos video mientras Google guarda el registro
-                    registrar(); 
+                    // Solo actuar si detecta uno de los formatos de barras configurados o un código QR
+                    if (formatosBarras.includes(formatoDetectado) || formatoDetectado === ZXing.BarcodeFormat.QR_CODE) {
+                        procesandoCodigo = true; // Bloquea lecturas infinitas en ráfaga
+                        
+                        const codigoDetectado = result.text.trim();
+                        txtMatricula.value = codigoDetectado;
+                        
+                        divResultado.className = "alert alert-warning text-center fw-bold";
+                        divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
+                        
+                        detenerCamara(); // Apaga el sensor temporalmente mientras registra
+                        registrar();
+                    }
                 }
             });
 
             document.getElementById("btnCamara").disabled = true;
             document.getElementById("btnDetener").disabled = false;
             divResultado.className = "alert alert-success text-center fw-bold";
-            divResultado.innerHTML = "Lector de Credenciales Activo. Apunte al código de barras.";
+            divResultado.innerHTML = "Lector Activo. Apunte al código de barras de la credencial.";
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error al abrir la cámara. Revisa los permisos.";
+            divResultado.innerHTML = "❌ Error: Permiso de cámara denegado. Concede accesos en tu celular.";
         }
     }
 
     function detenerCamara() {
         if (codeReaderControls) {
-            codeReader.reset(); // Resetea el hardware de captura por completo
+            codeReader.reset(); // Detiene por completo el flujo de hardware de la cámara
             codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
@@ -158,8 +156,9 @@
         }
 
         divResultado.className = "alert alert-info text-center fw-bold";
-        divResultado.innerHTML = "⏳ Guardando asistencia...";
+        divResultado.innerHTML = "⏳ Guardando asistencia en la base de datos...";
 
+        // Conversión limpia de parámetros para envío vía POST compatible con CORS de Google
         var datos = new URLSearchParams();
         datos.append('matricula', valorMatricula);
 
@@ -174,7 +173,7 @@
             
             if (res.status === "success") {
                 divResultado.classList.add("alert-success");
-                txtMatricula.value = ""; // Limpiar casilla para el siguiente alumno
+                txtMatricula.value = ""; // Limpiar el input para dejarlo listo
             } else if (res.status === "duplicado") {
                 divResultado.classList.add("alert-duplicado");
             } else {
@@ -182,18 +181,15 @@
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Espera 3 segundos mostrando el resultado en pantalla y reactiva el escáner
+            // Esperar 3 segundos mostrando la alerta del alumno y reactivar la cámara de forma automática
             setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error de conexión al guardar en la base de datos.";
+            divResultado.innerHTML = "❌ Error de conexión con el servidor.";
             setTimeout(iniciarCamara, 3000);
         });
     }
-
-
-    
 </script>
 </body>
 </html>
