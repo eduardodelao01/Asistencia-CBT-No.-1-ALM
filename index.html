@@ -6,7 +6,7 @@
     <title>Pase de Lista CBT</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script type="text/javascript" src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
@@ -16,12 +16,24 @@
             border-top-right-radius: 15px !important;
             background-color: #0056b3 !important; /* Azul Institucional */
         }
-        /* Contenedor de la cámara para centrarla y darle forma */
         #contenedor-camara { width: 100%; max-width: 450px; margin: 0 auto; background-color: black; border: 4px solid #0056b3; border-radius: 15px; overflow: hidden; position: relative; }
         video { width: 100%; height: auto; display: block; object-fit: cover; }
         .form-control-lg { text-align: center; font-weight: bold; font-size: 24px; color: #444; }
         .alert { font-size: 18px; padding: 15px; border-radius: 10px; }
         .alert-duplicado { background-color: #fff3cd; color: #664d03; border-color: #ffecb5; }
+        
+        /* Línea roja de guía para ayudar al usuario a centrar el código de barras */
+        .linea-guia {
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            width: 90%;
+            height: 2px;
+            background-color: red;
+            box-shadow: 0 0 6px red;
+            z-index: 10;
+            transform: translateY(-50%);
+        }
     </style>
 </head>
 <body>
@@ -37,7 +49,7 @@
             <div class="row mb-4 g-2">
                 <div class="col-6">
                     <button id="btnCamara" class="btn btn-primary btn-lg w-100 fw-bold" onclick="iniciarCamara()">
-                        📷 Iniciar Cámara
+                        📷 Iniciar Lector
                     </button>
                 </div>
                 <div class="col-6">
@@ -49,6 +61,7 @@
 
             <div class="text-center mb-4">
                 <div id="contenedor-camara">
+                    <div class="linea-guia"></div>
                     <video id="reader" autoplay muted playsinline></video>
                 </div>
             </div>
@@ -59,7 +72,7 @@
             </div>
 
             <div class="d-grid mb-4">
-                <button class="btn btn-success btn-lg fw-bold py-2" onclick="registrar()">
+                <button class="btn btn-success btn-lg" onclick="registrar()">
                     ✔ Registrar Asistencia
                 </button>
             </div>
@@ -72,74 +85,72 @@
 </div>
 
 <script>
-    // 🔴 REEMPLAZA EL TEXTO ENTRE LAS COMILLAS CON TU URL DE GOOGLE APPS SCRIPT:
+    // 🔴 PEGA AQUÍ TU URL DE GOOGLE APPS SCRIPT QUE YA FUNCIONA EN LA BASE DE DATOS:
     const URL_APPS_SCRIPT = "https://script.google.com/macros/s/AKfycbw7gNYb_lA7vMqCAimcSB348dzoVSyBhd3K40h6ycUGySJQFal2AulhiOhnxUBp3xOSlA/exec";
 
-    // Inicialización estándar del lector multiformato
-    const codeReader = new ZXing.BrowserMultiFormatReader();
+    // --- CONFIGURACIÓN PARA FORZAR CÓDIGOS DE BARRAS ---
+    const hints = new Map();
+    const formats = [
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.UPC_A
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Obliga a procesar de forma estricta imágenes difíciles
+
+    // Creamos el lector inyectando la configuración de códigos de barras
+    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
     let codeReaderControls = null;
     const txtMatricula = document.getElementById("matricula");
     const divResultado = document.getElementById("resultado");
     let procesandoCodigo = false;
 
-    // Lista estricta de formatos de códigos de barras lineales de credenciales escolares
-    const formatosBarras = [
-        ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.EAN_8,
-        ZXing.BarcodeFormat.UPC_A,
-        ZXing.BarcodeFormat.ITF
-    ];
-
     async function iniciarCamara() {
         divResultado.className = "alert alert-info text-center fw-bold";
-        divResultado.innerHTML = "Iniciando cámara trasera...";
+        divResultado.innerHTML = "Iniciando lector de barras...";
         procesandoCodigo = false;
         
-        // Configuración simplificada recomendada para máxima compatibilidad móvil (evita pantallas negras)
+        // Añadimos parámetros avanzados para forzar autofoco y optimizar resolución en el celular
         const constraints = {
             video: {
-                facingMode: "environment" 
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                advanced: [{ focusMode: "continuous" }] // Fuerza enfoque continuo
             }
         };
 
         try {
-            // Vinculamos la transmisión directamente al elemento <video> con ID 'reader'
             codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result && !procesandoCodigo) {
-                    const formatoDetectado = result.barcodeFormat;
+                    procesandoCodigo = true; // Bloquea lecturas en ráfaga
                     
-                    // Solo actuar si detecta uno de los formatos de barras configurados o un código QR
-                    if (formatosBarras.includes(formatoDetectado) || formatoDetectado === ZXing.BarcodeFormat.QR_CODE) {
-                        procesandoCodigo = true; // Bloquea lecturas infinitas en ráfaga
-                        
-                        const codigoDetectado = result.text.trim();
-                        txtMatricula.value = codigoDetectado;
-                        
-                        divResultado.className = "alert alert-warning text-center fw-bold";
-                        divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
-                        
-                        detenerCamara(); // Apaga el sensor temporalmente mientras registra
-                        registrar();
-                    }
+                    const codigoDetectado = result.text.trim();
+                    txtMatricula.value = codigoDetectado;
+                    
+                    divResultado.className = "alert alert-warning text-center fw-bold";
+                    divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
+                    
+                    detenerCamara(); // Apaga la cámara temporalmente para registrar
+                    registrar();
                 }
             });
 
             document.getElementById("btnCamara").disabled = true;
             document.getElementById("btnDetener").disabled = false;
             divResultado.className = "alert alert-success text-center fw-bold";
-            divResultado.innerHTML = "Lector Activo. Apunte al código de barras de la credencial.";
+            divResultado.innerHTML = "Lector de Barras Activo. Centre el código en la línea roja.";
         } catch (err) {
             console.error(err);
             divResultado.className = "alert alert-danger text-center fw-bold";
-            divResultado.innerHTML = "❌ Error: Permiso de cámara denegado. Concede accesos en tu celular.";
+            divResultado.innerHTML = "❌ Error: Permiso de cámara denegado.";
         }
     }
 
     function detenerCamara() {
         if (codeReaderControls) {
-            codeReader.reset(); // Detiene por completo el flujo de hardware de la cámara
+            codeReader.reset(); // Resetea por completo el hardware de la cámara
             codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
@@ -158,7 +169,6 @@
         divResultado.className = "alert alert-info text-center fw-bold";
         divResultado.innerHTML = "⏳ Guardando asistencia en la base de datos...";
 
-        // Conversión limpia de parámetros para envío vía POST compatible con CORS de Google
         var datos = new URLSearchParams();
         datos.append('matricula', valorMatricula);
 
@@ -173,7 +183,7 @@
             
             if (res.status === "success") {
                 divResultado.classList.add("alert-success");
-                txtMatricula.value = ""; // Limpiar el input para dejarlo listo
+                txtMatricula.value = ""; 
             } else if (res.status === "duplicado") {
                 divResultado.classList.add("alert-duplicado");
             } else {
@@ -181,7 +191,7 @@
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Esperar 3 segundos mostrando la alerta del alumno y reactivar la cámara de forma automática
+            // Esperar 3 segundos mostrando el resultado y reactivar la cámara de forma automática
             setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
