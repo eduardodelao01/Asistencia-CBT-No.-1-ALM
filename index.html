@@ -95,12 +95,53 @@
     const divResultado = document.getElementById("resultado");
     let procesandoCodigo = false;
 
+    // --- FUNCIÓN GENERADORA DE BIP DIGITAL ---
+    function reproducirBip(tipo) {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            if (tipo === "success") {
+                // Bip de Éxito: Dos tonos rápidos hacia arriba (agudo)
+                emitirTono(ctx, 587.33, 0.08, 0);       // Nota Re5
+                emitirTono(ctx, 880.00, 0.12, 0.09);    // Nota La5
+            } else if (tipo === "duplicado") {
+                // Bip de Duplicado: Un tono medio de advertencia
+                emitirTono(ctx, 440.00, 0.35, 0);       // Nota La4
+            } else if (tipo === "error") {
+                // Bip de Error: Dos tonos graves pausados
+                emitirTono(ctx, 220.00, 0.18, 0);       // Nota La2
+                emitirTono(ctx, 220.00, 0.18, 0.22);    // Nota La2
+            }
+        } catch (e) {
+            console.error("El navegador bloqueó el audio temporalmente:", e);
+        }
+    }
+
+    function emitirTono(ctx, frecuencia, duracion, retraso) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(frecuencia, ctx.currentTime + retraso);
+        
+        // Rampa suave de volumen para que no truene la bocina del celular
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + retraso);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + retraso + duracion);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(ctx.currentTime + retraso);
+        osc.stop(ctx.currentTime + retraso + duracion);
+    }
+
     async function iniciarCamara() {
         divResultado.className = "alert alert-info text-center fw-bold";
         divResultado.innerHTML = "Iniciando lector de barras...";
         procesandoCodigo = false;
         
-        // Configuración nativa limpia para asegurar la apertura de la cámara trasera sin restricciones
         const constraints = {
             video: {
                 facingMode: "environment"
@@ -108,10 +149,8 @@
         };
 
         try {
-            // Iniciamos la cámara en el elemento video
             codeReaderControls = await codeReader.decodeFromConstraints(constraints, 'reader', (result, error) => {
                 if (result && !procesandoCodigo) {
-                    // Forzamos la lectura de cualquier formato lineal (Code 128, Code 39, EAN, QR)
                     procesandoCodigo = true; 
                     
                     const codigoDetectado = result.text.trim();
@@ -120,7 +159,7 @@
                     divResultado.className = "alert alert-warning text-center fw-bold";
                     divResultado.innerHTML = "Código detectado: " + codigoDetectado + ". Procesando...";
                     
-                    detenerCamara(); // Apaga la cámara de inmediato para evitar duplicados
+                    detenerCamara(); 
                     registrar();
                 }
             });
@@ -138,7 +177,7 @@
 
     function detenerCamara() {
         if (codeReaderControls) {
-            codeReader.reset(); // Libera por completo el hardware de la cámara del teléfono
+            codeReader.reset(); 
             codeReaderControls = null;
         }
         document.getElementById("btnCamara").disabled = false;
@@ -172,19 +211,22 @@
             if (res.status === "success") {
                 divResultado.classList.add("alert-success");
                 txtMatricula.value = ""; 
+                reproducirBip("success"); // 🔊 Bip de éxito
             } else if (res.status === "duplicado") {
                 divResultado.classList.add("alert-duplicado");
+                reproducirBip("duplicado"); // 🔊 Bip de duplicado
             } else {
                 divResultado.classList.add("alert-danger");
+                reproducirBip("error"); // 🔊 Bip de error o no encontrado
             }
             divResultado.innerHTML = res.message.replace(/\n/g, "<br>");
 
-            // Esperar 3 segundos para que veas el nombre del alumno y reactiva el escáner automáticamente
             setTimeout(iniciarCamara, 3000);
         })
         .catch(err => {
             divResultado.className = "alert alert-danger text-center fw-bold";
             divResultado.innerHTML = "❌ Error de conexión con el servidor.";
+            reproducirBip("error"); // 🔊 Bip de error de red
             setTimeout(iniciarCamara, 3000);
         });
     }
